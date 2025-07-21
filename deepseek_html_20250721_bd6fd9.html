@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa z Edytowalnymi Znacznikami</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+        
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        /* Panel edycji */
+        .edit-toggle {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .edit-toggle.active {
+            background: #d0d0d0;
+        }
+        
+        /* Pole opisu */
+        .info-panel {
+            position: absolute;
+            top: 50px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.3);
+            width: 300px;
+            display: none;
+        }
+        
+        .info-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .info-controls {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .info-controls button {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .image-container {
+            position: relative;
+            width: 100%;
+            height: 200px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .image-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 10px;
+        }
+        
+        .image-nav button {
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+        }
+        
+        .description {
+            margin: 10px 0;
+        }
+        
+        textarea {
+            width: 100%;
+            min-height: 80px;
+            padding: 8px;
+            margin-bottom: 10px;
+            resize: vertical;
+        }
+        
+        /* Paleta kolorów */
+        .color-palette {
+            position: absolute;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.3);
+            z-index: 2000;
+            display: none;
+        }
+        
+        .color-preview {
+            width: 100px;
+            height: 30px;
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+        }
+        
+        .color-inputs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .color-inputs input {
+            width: 60px;
+            padding: 5px;
+        }
+        
+        /* Podgląd zdjęcia */
+        .image-preview {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 3000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            display: none;
+        }
+        
+        .preview-image-container {
+            max-width: 90%;
+            max-height: 90%;
+            position: relative;
+        }
+        
+        .preview-image-container img {
+            max-width: 100%;
+            max-height: 90vh;
+            display: block;
+            margin: 0 auto;
+        }
+        
+        .preview-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+        }
+        
+        .preview-nav button {
+            background: rgba(255,255,255,0.3);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        
+        .close-preview {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            font-size: 30px;
+            cursor: pointer;
+            z-index: 3001;
+        }
+        
+        /* Znacznik punktowy */
+        .point-marker {
+            background: rgba(240, 230, 140, 0.8);
+            border: 5px solid white;
+            border-radius: 50%;
+            width: 20px !important;
+            height: 20px !important;
+            position: absolute;
+            transform: translate(-50%, -50%);
+            pointer-events: auto;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <div class="edit-toggle" id="editToggle">Tryb edycji: WYŁ</div>
+    
+    <div class="info-panel" id="infoPanel">
+        <div class="info-header">
+            <h3>Szczegóły obiektu</h3>
+            <div class="info-controls">
+                <button id="editColor" title="Zmień kolor">🎨</button>
+                <button id="editDesc" title="Edytuj opis">✏️</button>
+                <button id="closeInfo" title="Zamknij">✖</button>
+            </div>
+        </div>
+        <div class="image-container">
+            <img id="currentImage" src="" alt="Zdjęcie obiektu">
+            <div class="image-nav">
+                <button id="prevImage">❮</button>
+                <button id="nextImage">❯</button>
+            </div>
+        </div>
+        <div class="description">
+            <textarea id="objectDesc" placeholder="Opis obiektu..."></textarea>
+        </div>
+        <div>
+            <button id="saveDesc">Zapisz zmiany</button>
+        </div>
+    </div>
+    
+    <div class="color-palette" id="colorPalette">
+        <div class="color-preview" id="colorPreview"></div>
+        <div class="color-inputs">
+            <label>R: <input type="number" id="red" min="0" max="255" value="240"></label>
+            <label>G: <input type="number" id="green" min="0" max="255" value="230"></label>
+            <label>B: <input type="number" id="blue" min="0" max="255" value="140"></label>
+        </div>
+        <button id="applyColor">Zastosuj kolor</button>
+    </div>
+    
+    <div class="image-preview" id="imagePreview">
+        <span class="close-preview">✖</span>
+        <div class="preview-image-container">
+            <img id="previewImage" src="" alt="Podgląd zdjęcia">
+            <div class="preview-nav">
+                <button id="previewPrev">❮</button>
+                <button id="previewNext">❯</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Dane początkowe
+        const mapConfig = {
+            imageUrl: 'https://i.ibb.co/DDcRkJx/wartomia2.png',
+            bounds: [[0, 0], [1000, 1000]],
+            editMode: false,
+            currentObject: null,
+            currentFeature: null,
+            drawing: {
+                line: false,
+                polygon: false,
+                points: []
+            },
+            color: {
+                r: 240,
+                g: 230,
+                b: 140
+            },
+            images: [
+                'https://picsum.photos/300/200?random=1',
+                'https://picsum.photos/300/200?random=2',
+                'https://picsum.photos/300/200?random=3'
+            ],
+            currentImageIndex: 0
+        };
+
+        // Inicjalizacja mapy
+        const map = L.map('map', {
+            crs: L.CRS.Simple,
+            minZoom: -2,
+            maxZoom: 2,
+            zoomDelta: 0.25,
+            wheelPxPerZoomLevel: 120
+        });
+
+        // Dodanie obrazu jako mapy
+        L.imageOverlay(mapConfig.imageUrl, mapConfig.bounds).addTo(map);
+        map.fitBounds(mapConfig.bounds);
+
+        // Warstwy dla elementów
+        const markersLayer = L.layerGroup().addTo(map);
+        const linesLayer = L.layerGroup().addTo(map);
+        const polygonsLayer = L.layerGroup().addTo(map);
+
+        // Funkcje pomocnicze
+        function getSandColor() {
+            return `rgb(${mapConfig.color.r}, ${mapConfig.color.g}, ${mapConfig.color.b})`;
+        }
+
+        function getSandColorWithAlpha(alpha) {
+            return `rgba(${mapConfig.color.r}, ${mapConfig.color.g}, ${mapConfig.color.b}, ${alpha})`;
+        }
+
+        function updateColorPreview() {
+            document.getElementById('colorPreview').style.backgroundColor = 
+                `rgb(${document.getElementById('red').value}, 
+                 ${document.getElementById('green').value}, 
+                 ${document.getElementById('blue').value})`;
+        }
+
+        // Tryb edycji
+        const editToggle = document.getElementById('editToggle');
+        editToggle.addEventListener('click', () => {
+            mapConfig.editMode = !mapConfig.editMode;
+            editToggle.classList.toggle('active', mapConfig.editMode);
+            editToggle.textContent = `Tryb edycji: ${mapConfig.editMode ? 'WŁ' : 'WYŁ'}`;
+            
+            // Ukryj panel informacyjny przy wyłączaniu edycji
+            if (!mapConfig.editMode) {
+                document.getElementById('infoPanel').style.display = 'none';
+            }
+        });
+
+        // Znacznik punktowy
+        map.on('click', (e) => {
+            if (!mapConfig.editMode) return;
+            if (mapConfig.drawing.line || mapConfig.drawing.polygon) return;
+            
+            const marker = L.marker(e.latlng, {
+                icon: L.divIcon({
+                    className: 'point-marker',
+                    html: '',
+                    iconSize: [20, 20]
+                })
+            }).addTo(markersLayer);
+            
+            marker.on('dblclick', () => {
+                markersLayer.removeLayer(marker);
+            });
+        });
+
+        // Znacznik liniowy
+        let polyline = null;
+        let lineMarkers = [];
+        
+        function startLineDrawing() {
+            if (!mapConfig.editMode || mapConfig.drawing.polygon) return;
+            mapConfig.drawing.line = true;
+            mapConfig.drawing.points = [];
+        }
+        
+        function addLinePoint(e) {
+            if (!mapConfig.drawing.line) return;
+            
+            mapConfig.drawing.points.push(e.latlng);
+            const marker = L.marker(e.latlng, {
+                icon: L.divIcon({
+                    className: 'point-marker',
+                    html: '',
+                    iconSize: [20, 20]
+                })
+            }).addTo(markersLayer);
+            
+            lineMarkers.push(marker);
+            
+            // Usuwanie ostatniego punktu przez podwójne kliknięcie
+            marker.on('dblclick', () => {
+                if (mapConfig.drawing.points.length > 1) {
+                    finishLineDrawing();
+                }
+            });
+            
+            // Aktualizacja linii
+            if (mapConfig.drawing.points.length > 1) {
+                if (polyline) {
+                    polyline.remove();
+                }
+                polyline = L.polyline(mapConfig.drawing.points, {
+                    color: getSandColor(),
+                    weight: 3
+                }).addTo(linesLayer);
+            }
+        }
+        
+        function finishLineDrawing() {
+            if (mapConfig.drawing.points.length > 1 && polyline) {
+                polyline.addTo(linesLayer);
+                mapConfig.drawing.line = false;
+                mapConfig.drawing.points = [];
+                polyline = null;
+                
+                // Usuń tymczasowe markery
+                lineMarkers.forEach(marker => markersLayer.removeLayer(marker));
+                lineMarkers = [];
+            }
+        }
+        
+        map.on('click', (e) => {
+            if (mapConfig.drawing.line) {
+                addLinePoint(e);
+            } else if (mapConfig.editMode && !mapConfig.drawing.polygon) {
+                startLineDrawing();
+                addLinePoint(e);
+            }
+        });
+
+        // Znacznik obszarowy
+        let polygon = null;
+        let polygonMarkers = [];
+        
+        function startPolygonDrawing() {
+            if (!mapConfig.editMode || mapConfig.drawing.line) return;
+            mapConfig.drawing.polygon = true;
+            mapConfig.drawing.points = [];
+        }
+        
+        function addPolygonPoint(e) {
+            if (!mapConfig.drawing.polygon) return;
+            
+            mapConfig.drawing.points.push(e.latlng);
+            const marker = L.marker(e.latlng, {
+                icon: L.divIcon({
+                    className: 'point-marker',
+                    html: '',
+                    iconSize: [20, 20]
+                })
+            }).addTo(markersLayer);
+            
+            polygonMarkers.push(marker);
+            
+            // Usuwanie ostatniego punktu przez podwójne kliknięcie
+            marker.on('dblclick', () => {
+                if (mapConfig.drawing.points.length > 2) {
+                    finishPolygonDrawing();
+                }
+            });
+            
+            // Aktualizacja polygonu
+            if (mapConfig.drawing.points.length > 2) {
+                if (polygon) {
+                    polygon.remove();
+                }
+                polygon = L.polygon(mapConfig.drawing.points, {
+                    color: '#888',
+                    weight: 2,
+                    fillColor: getSandColorWithAlpha(0.5),
+                    fillOpacity: 0.5
+                }).addTo(polygonsLayer);
+            }
+        }
+        
+        function finishPolygonDrawing() {
+            if (mapConfig.drawing.points.length > 2 && polygon) {
+                polygon.addTo(polygonsLayer);
+                mapConfig.drawing.polygon = false;
+                mapConfig.drawing.points = [];
+                polygon = null;
+                
+                // Usuń tymczasowe markery
+                polygonMarkers.forEach(marker => markersLayer.removeLayer(marker));
+                polygonMarkers = [];
+            }
+        }
+        
+        map.on('click', (e) => {
+            if (mapConfig.drawing.polygon) {
+                addPolygonPoint(e);
+            } else if (mapConfig.editMode && !mapConfig.drawing.line) {
+                startPolygonDrawing();
+                addPolygonPoint(e);
+            }
+        });
+
+        // Interakcja z elementami (poza trybem edycji)
+        function setupFeatureInteraction(feature) {
+            feature.on('click', (e) => {
+                if (mapConfig.editMode) return;
+                
+                mapConfig.currentObject = feature;
+                document.getElementById('infoPanel').style.display = 'block';
+                document.getElementById('currentImage').src = mapConfig.images[mapConfig.currentImageIndex];
+                document.getElementById('previewImage').src = mapConfig.images[mapConfig.currentImageIndex];
+            });
+        }
+
+        // Obsługa panelu informacyjnego
+        document.getElementById('closeInfo').addEventListener('click', () => {
+            document.getElementById('infoPanel').style.display = 'none';
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!document.getElementById('infoPanel').contains(e.target) && 
+                e.target !== mapConfig.currentObject) {
+                document.getElementById('infoPanel').style.display = 'none';
+            }
+        });
+
+        // Nawigacja zdjęć
+        document.getElementById('prevImage').addEventListener('click', () => {
+            mapConfig.currentImageIndex--;
+            if (mapConfig.currentImageIndex < 0) {
+                mapConfig.currentImageIndex = mapConfig.images.length - 1;
+            }
+            document.getElementById('currentImage').src = mapConfig.images[mapConfig.currentImageIndex];
+        });
+
+        document.getElementById('nextImage').addEventListener('click', () => {
+            mapConfig.currentImageIndex++;
+            if (mapConfig.currentImageIndex >= mapConfig.images.length) {
+                mapConfig.currentImageIndex = 0;
+            }
+            document.getElementById('currentImage').src = mapConfig.images[mapConfig.currentImageIndex];
+        });
+
+        // Podgląd zdjęć
+        document.getElementById('currentImage').addEventListener('click', () => {
+            document.getElementById('imagePreview').style.display = 'flex';
+        });
+
+        document.querySelector('.close-preview').addEventListener('click', () => {
+            document.getElementById('imagePreview').style.display = 'none';
+        });
+
+        document.getElementById('previewPrev').addEventListener('click', () => {
+            mapConfig.currentImageIndex--;
+            if (mapConfig.currentImageIndex < 0) {
+                mapConfig.currentImageIndex = mapConfig.images.length - 1;
+            }
+            document.getElementById('previewImage').src = mapConfig.images[mapConfig.currentImageIndex];
+        });
+
+        document.getElementById('previewNext').addEventListener('click', () => {
+            mapConfig.currentImageIndex++;
+            if (mapConfig.currentImageIndex >= mapConfig.images.length) {
+                mapConfig.currentImageIndex = 0;
+            }
+            document.getElementById('previewImage').src = mapConfig.images[mapConfig.currentImageIndex];
+        });
+
+        // Paleta kolorów
+        document.getElementById('editColor').addEventListener('click', () => {
+            const palette = document.getElementById('colorPalette');
+            palette.style.display = 'block';
+            palette.style.top = `${document.getElementById('editColor').getBoundingClientRect().bottom}px`;
+            palette.style.left = `${document.getElementById('editColor').getBoundingClientRect().left}px`;
+            
+            document.getElementById('red').value = mapConfig.color.r;
+            document.getElementById('green').value = mapConfig.color.g;
+            document.getElementById('blue').value = mapConfig.color.b;
+            updateColorPreview();
+        });
+
+        ['red', 'green', 'blue'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updateColorPreview);
+        });
+
+        document.getElementById('applyColor').addEventListener('click', () => {
+            mapConfig.color = {
+                r: parseInt(document.getElementById('red').value),
+                g: parseInt(document.getElementById('green').value),
+                b: parseInt(document.getElementById('blue').value)
+            };
+            document.getElementById('colorPalette').style.display = 'none';
+            
+            // Aktualizacja koloru bieżącego obiektu
+            if (mapConfig.currentObject) {
+                if (mapConfig.currentObject instanceof L.Polyline) {
+                    mapConfig.currentObject.setStyle({ color: getSandColor() });
+                } else if (mapConfig.currentObject instanceof L.Polygon) {
+                    mapConfig.currentObject.setStyle({ 
+                        fillColor: getSandColorWithAlpha(0.5),
+                        color: '#888'
+                    });
+                }
+            }
+        });
+
+        // Zoom kółkiem myszy
+        map.on('wheel', (e) => {
+            if (e.originalEvent.deltaY < 0) {
+                map.zoomIn();
+            } else {
+                map.zoomOut();
+            }
+        });
+    </script>
+</body>
+</html>
